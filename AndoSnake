@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Snake – Apfel bei Berührung essen</title>
+<style>
+body{
+  margin:0;
+  background:black;
+  overflow:hidden;
+}
+canvas{display:block;}
+
+/* ================= Touch Buttons ================= */
+#controls{
+  position:fixed;
+  bottom:20px;
+  right:20px;
+  width:160px;
+  height:160px;
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  grid-template-rows:repeat(3,1fr);
+  gap:10px;
+  z-index:10;
+}
+.control{
+  background:rgba(255,255,255,0.15);
+  border-radius:12px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:28px;
+  color:white;
+  user-select:none;
+}
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<!-- ================= Buttons ================= -->
+<div id="controls">
+  <div></div>
+  <div class="control" data-dir="up">⬆️</div>
+  <div></div>
+
+  <div class="control" data-dir="left">⬅️</div>
+  <div></div>
+  <div class="control" data-dir="right">➡️</div>
+
+  <div></div>
+  <div class="control" data-dir="down">⬇️</div>
+  <div></div>
+</div>
+
+<script>
+// ================= Canvas =================
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+canvas.width = innerWidth;
+canvas.height = innerHeight;
+
+// ================= Konstanten =================
+const SIZE = 22;
+const PLAYER_SPEED = 5;
+const BOT_SPEED = 2;
+const FOOD_COUNT = 12000;
+
+const APPLE_RADIUS = 11;
+const APPLE_GROWTH = 6;
+
+// ================= Steuerung =================
+let keys={up:false,down:false,left:false,right:false};
+
+addEventListener("keydown",e=>{
+  const k=e.key.toLowerCase();
+  if(k==="w")keys.up=true;
+  if(k==="s")keys.down=true;
+  if(k==="a")keys.left=true;
+  if(k==="d")keys.right=true;
+});
+addEventListener("keyup",e=>{
+  const k=e.key.toLowerCase();
+  if(k==="w")keys.up=false;
+  if(k==="s")keys.down=false;
+  if(k==="a")keys.left=false;
+  if(k==="d")keys.right=false;
+});
+
+// ================= Touch Buttons Logik =================
+document.querySelectorAll(".control").forEach(btn=>{
+  const dir=btn.dataset.dir;
+
+  const press=()=>{
+    keys.up=keys.down=keys.left=keys.right=false;
+    keys[dir]=true;
+  };
+  const release=()=>{
+    keys[dir]=false;
+  };
+
+  btn.addEventListener("touchstart",press,{passive:true});
+  btn.addEventListener("touchend",release);
+  btn.addEventListener("mousedown",press);
+  btn.addEventListener("mouseup",release);
+  btn.addEventListener("mouseleave",release);
+});
+
+// ================= Spieler =================
+let snake=[{x:0,y:0}];
+let growSegments=0;
+
+// ================= Kamera =================
+let camera={x:0,y:0};
+
+// ================= Essen =================
+let food=[];
+function spawnFood(){
+  return{
+    x:Math.random()*6000-3000,
+    y:Math.random()*6000-3000
+  };
+}
+for(let i=0;i<FOOD_COUNT;i++) food.push(spawnFood());
+
+// ================= Bot =================
+let bot=null;
+function spawnBot(){
+  let x,y;
+  do{
+    x=Math.random()*6000-3000;
+    y=Math.random()*6000-3000;
+  }while(Math.hypot(x-snake[0].x,y-snake[0].y)<300);
+
+  bot={
+    body:[{x,y}],
+    eaten:0,
+    cooldown:0,
+    active:true
+  };
+}
+spawnBot();
+
+// ================= Rounded Rect =================
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y);
+  ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r);
+  ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h);
+  ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r);
+  ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// ================= Bewegung =================
+function moveSnake(){
+  let dx=0,dy=0;
+  if(keys.up)dy=-PLAYER_SPEED;
+  if(keys.down)dy=PLAYER_SPEED;
+  if(keys.left)dx=-PLAYER_SPEED;
+  if(keys.right)dx=PLAYER_SPEED;
+
+  if(dx||dy){
+    snake.unshift({x:snake[0].x+dx,y:snake[0].y+dy});
+    if(growSegments>0)growSegments--;
+    else snake.pop();
+  }
+}
+
+function moveBot(){
+  if(!bot||!bot.active)return;
+  const h=bot.body[0];
+  const dx=snake[0].x-h.x;
+  const dy=snake[0].y-h.y;
+  const d=Math.hypot(dx,dy)||1;
+  bot.body[0]={x:h.x+dx/d*BOT_SPEED,y:h.y+dy/d*BOT_SPEED};
+}
+
+// ================= Bot Kollision =================
+function checkBotCollision(){
+  if(!bot||!bot.active)return;
+
+  const dx=snake[0].x-bot.body[0].x;
+  const dy=snake[0].y-bot.body[0].y;
+  const d=Math.hypot(dx,dy);
+
+  if(d<SIZE && bot.cooldown<=0){
+    if(snake.length>1){
+      snake.pop();
+      bot.eaten++;
+      bot.cooldown=3;
+    }
+    if(bot.eaten>=55){
+      bot=null;
+      setTimeout(spawnBot,100);
+    }
+  }
+  if(bot) bot.cooldown--;
+}
+
+// ================= Essen =================
+function checkFood(){
+  for(let i=0;i<food.length;i++){
+    const d=Math.hypot(
+      snake[0].x-food[i].x,
+      snake[0].y-food[i].y
+    );
+    if(d<APPLE_RADIUS+SIZE/2){
+      growSegments+=APPLE_GROWTH;
+      food[i]=spawnFood();
+    }
+  }
+}
+
+// ================= Kamera =================
+function updateCamera(){
+  camera.x=snake[0].x-canvas.width/2;
+  camera.y=snake[0].y-canvas.height/2;
+}
+
+// ================= Zeichnen =================
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  ctx.fillStyle="red";
+  food.forEach(f=>{
+    ctx.beginPath();
+    ctx.arc(
+      f.x-camera.x,
+      f.y-camera.y,
+      APPLE_RADIUS,
+      0,
+      Math.PI*2
+    );
+    ctx.fill();
+  });
+
+  ctx.fillStyle="lime";
+  snake.forEach(s=>{
+    roundRect(
+      s.x-camera.x,
+      s.y-camera.y,
+      SIZE,
+      SIZE,
+      SIZE/2.5
+    );
+  });
+
+  if(bot){
+    ctx.fillStyle="orange";
+    bot.body.forEach(b=>{
+      roundRect(
+        b.x-camera.x,
+        b.y-camera.y,
+        SIZE,
+        SIZE,
+        SIZE/2.5
+      );
+    });
+  }
+}
+
+// ================= Loop =================
+function loop(){
+  moveSnake();
+  moveBot();
+  checkBotCollision();
+  checkFood();
+  updateCamera();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+
+</body>
+</html>
