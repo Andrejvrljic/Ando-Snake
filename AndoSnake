@@ -66,7 +66,7 @@ canvas.height = innerHeight;
 const SIZE = 22;
 const PLAYER_SPEED = 5;
 const BOT_SPEED = 2;
-const FOOD_COUNT = 12000;
+const FOOD_COUNT = 12002;
 
 const APPLE_RADIUS = 11;
 const APPLE_GROWTH = 6;
